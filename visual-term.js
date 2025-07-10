@@ -50,12 +50,15 @@ class Visual {
   }
 
   start() {
-    this.CHARS = this.CHARS.map((char) => [
-      char,
-      -this.getBrightnessOfChar(char),
-    ])
-      .sort((a, b) => b[1] - a[1])
-      .map(([char, _]) => char);
+    window.addEventListener("resize", this.onResize.bind(this));
+    this.terminal.addEventListener("mousemove", this.onMouseMove.bind(this));
+
+    let brightness = {};
+    for (let char of this.CHARS) {
+      brightness[char] = this.getBrightnessOfChar(char);
+    }
+
+    this.CHARS = this.CHARS.sort((a, b) => brightness[b] - brightness[a]);
     this.onResize();
   }
 
@@ -67,7 +70,7 @@ class Visual {
   CAM_POSITION = new V3d(5, 0, 0);
   CAM_PLANE = 3;
 
-  LIGHT_POSITION = new V3d(0, 0, 0);
+  LIGHT_POSITION = new V3d(5, 1, 0);
 
   drawPixel(x, y) {
     let value = 0;
@@ -95,18 +98,14 @@ class Visual {
             V3d.sub(contact_point, sphere.center),
             V3d.sub(this.LIGHT_POSITION, contact_point).normalize(),
           ) / sphere.radius;
-        console.log(valor);
 
-        value = Math.max(valor, value);
+        value = Math.max(valor, value, 1 / this.CHARS.length);
       }
     }
 
     return this.CHARS[
       Math.max(
-        Math.min(
-          Math.floor((1 - value) * this.CHARS.length),
-          this.CHARS.length - 1,
-        ),
+        Math.min(Math.floor(value * this.CHARS.length), this.CHARS.length - 1),
         0,
       )
     ];
@@ -147,6 +146,20 @@ class Visual {
     this.width = this.getMaxOfCharPerLine();
     this.height = 31;
 
+    this.draw();
+  }
+
+  onMouseMove(event) {
+    let theta = V3d.scale(
+      new V3d(
+        0,
+        event.offsetX - this.terminal.clientWidth / 2,
+        event.offsetY - this.terminal.clientHeight / 2,
+      ),
+      10 / Math.min(this.terminal.clientHeight, this.terminal.clientWidth),
+    );
+
+    this.LIGHT_POSITION = V3d.add(theta, this.CAM_POSITION);
     this.draw();
   }
 
@@ -200,7 +213,6 @@ function starter() {
 
   const visual = new Visual(terminal);
 
-  window.addEventListener("resize", visual.onResize.bind(visual));
   visual.start();
 }
 
