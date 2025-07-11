@@ -36,7 +36,9 @@ class V3d {
 
 class Visual {
   BASIC_CHAR = "_";
-  CHARS = Array.from({ length: 94 }).map((_, i) => String.fromCharCode(i + 32));
+  CHARS = Array.from({ length: 95 }).map((_, i) => String.fromCharCode(i + 32));
+  CHAR_HEIGHT = 25;
+  CHAR_WIDTH = 12;
 
   /**
    *
@@ -143,46 +145,25 @@ class Visual {
   }
 
   onResize() {
-    this.width = this.getMaxOfCharPerLine();
-    this.height = 31;
+    this.width = Math.floor(this.terminal.clientWidth / this.CHAR_WIDTH);
+    this.height = Math.floor(this.terminal.clientHeight / this.CHAR_HEIGHT);
 
     this.draw();
   }
 
   onMouseMove(event) {
-    let theta = V3d.scale(
-      new V3d(
-        0,
-        event.offsetX - this.terminal.clientWidth / 2,
-        event.offsetY - this.terminal.clientHeight / 2,
-      ),
-      10 / Math.min(this.terminal.clientHeight, this.terminal.clientWidth),
+    let minLength = Math.min(
+      this.terminal.clientWidth,
+      this.terminal.clientHeight,
     );
 
-    this.LIGHT_POSITION = V3d.add(theta, this.CAM_POSITION);
+    this.LIGHT_POSITION = new V3d(
+      4,
+      (4 * (event.offsetX - this.terminal.clientWidth / 2)) / minLength,
+      (4 * (event.offsetY - this.terminal.clientHeight / 2)) / minLength,
+    );
+
     this.draw();
-  }
-
-  /**
-   * Get max of char per line in monospaced div
-   * @param {HTMLDivElement} terminal
-   * @returns
-   */
-  getMaxOfCharPerLine() {
-    let innerHTML = this.terminal.innerHTML;
-
-    this.terminal.innerHTML = this.BASIC_CHAR;
-
-    let inicialHeight = this.terminal.clientHeight;
-
-    let count = 2;
-    for (; inicialHeight === this.terminal.clientHeight && count < 1000; ) {
-      this.terminal.textContent = this.BASIC_CHAR.repeat(count++);
-    }
-
-    this.terminal.innerHTML = innerHTML;
-
-    return count - 2;
   }
 
   getBrightnessOfChar(char, size = 20) {
@@ -208,12 +189,69 @@ class Visual {
   }
 }
 
-function starter() {
-  const terminal = document.getElementById("terminal");
+class HTMLVisualTermElement extends HTMLElement {
+  constructor() {
+    super();
+    const shadow = this.attachShadow({ mode: "open" });
 
-  const visual = new Visual(terminal);
+    this.terminal = document.createElement("div");
+    this.terminal.classList.add("terminal");
+    shadow.appendChild(this.terminal);
 
-  visual.start();
+    const style = this.generateStyle();
+    shadow.appendChild(style);
+
+    this.visual = new Visual(this.terminal);
+    window.addEventListener("load", () => this.visual.start());
+  }
+
+  static get observedAttributes() {
+    return ["width", "height"];
+  }
+
+  generateStyle() {
+    const styleElement = document.createElement("style");
+
+    styleElement.innerText = `.terminal {
+      background-color: #000000;
+      color: #ffffff;
+      width: 100%;
+      height: 100%;
+      font-family: monospace;
+      word-break: break-word;
+      white-space: pre-wrap;
+      font-size: 20px;
+      line-height: 25px;
+    }`.replaceAll("\n", " ");
+
+    return styleElement;
+  }
+
+  connectedCallback() {
+    this.style.display = "block";
+
+    let width = this.getAttribute("width");
+    if (width != null) {
+      this.style.width = width;
+    }
+
+    let height = this.getAttribute("height");
+    if (height != null) {
+      this.style.height = height;
+    }
+  }
+
+  attributeChangedCallback(_name, _oldValue, _newValue) {
+    let width = this.getAttribute("width");
+    if (width != null) {
+      this.style.width = width;
+    }
+
+    let height = this.getAttribute("height");
+    if (height != null) {
+      this.style.height = height;
+    }
+  }
 }
 
-window.addEventListener("load", starter);
+window.customElements.define("visual-term", HTMLVisualTermElement);

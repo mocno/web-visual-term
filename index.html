@@ -7,6 +7,18 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="terminal"></div>
+    <visual-term id="vis-term" />
+    <script>
+        const MARGIN_SIZE = 20;
+        const visualTerm = document.querySelector('#vis-term')
+
+        function updateSizes() {
+          visualTerm.setAttribute('width', (window.innerWidth- 2*MARGIN_SIZE) + "px");
+          visualTerm.setAttribute('height', (window.innerHeight- 2*MARGIN_SIZE) + "px");
+        }
+
+        document.addEventListener('DOMContentLoaded', updateSizes)
+        window.addEventListener('resize', updateSizes);
+    </script>
 </body>
 </html>
