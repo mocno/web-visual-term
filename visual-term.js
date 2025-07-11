@@ -55,8 +55,8 @@ function binarySearch(list, key) {
 
 class Visual {
   BACKGROUND_CHAR = " ";
-  BASIC_CHAR = "_";
   CHARS = Array.from({ length: 94 }).map((_, i) => String.fromCharCode(i + 33));
+  // ".,:ilwW".split("");
   CHAR_HEIGHT = 25;
   CHAR_WIDTH = 12;
 
@@ -154,7 +154,9 @@ class Visual {
   }
 
   generateContent() {
-    this.terminal.innerText = this.BASIC_CHAR.repeat(this.width * this.height);
+    this.terminal.innerText = this.BACKGROUND_CHAR.repeat(
+      this.width * this.height,
+    );
 
     let minLength = Math.min(
       this.terminal.clientWidth,
