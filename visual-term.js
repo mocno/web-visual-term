@@ -34,9 +34,29 @@ class V3d {
   }
 }
 
+function binarySearch(list, key) {
+  let start = 0,
+    end = list.length - 1;
+
+  while (start <= end) {
+    let mid = Math.floor((start + end) / 2);
+
+    if (list[mid] === key) {
+      return mid;
+    } else if (list[mid] < key) {
+      start = mid + 1;
+    } else {
+      end = mid - 1;
+    }
+  }
+
+  return start;
+}
+
 class Visual {
+  BACKGROUND_CHAR = " ";
   BASIC_CHAR = "_";
-  CHARS = Array.from({ length: 95 }).map((_, i) => String.fromCharCode(i + 32));
+  CHARS = Array.from({ length: 94 }).map((_, i) => String.fromCharCode(i + 33));
   CHAR_HEIGHT = 25;
   CHAR_WIDTH = 12;
 
@@ -60,7 +80,20 @@ class Visual {
       brightness[char] = this.getBrightnessOfChar(char);
     }
 
-    this.CHARS = this.CHARS.sort((a, b) => brightness[b] - brightness[a]);
+    let minBrightness = Math.min(...Object.values(brightness));
+    let rangeBrightness =
+      Math.max(...Object.values(brightness)) - minBrightness;
+
+    for (let char of this.CHARS) {
+      brightness[char] = (brightness[char] - minBrightness) / rangeBrightness;
+    }
+
+    this.CHARS = this.CHARS.sort((a, b) => brightness[a] - brightness[b]);
+    this.BRIGHTNESS = [];
+    for (let char of this.CHARS) {
+      this.BRIGHTNESS.push(brightness[char]);
+    }
+
     this.onResize();
   }
 
@@ -75,7 +108,7 @@ class Visual {
   LIGHT_POSITION = new V3d(5, 1, 0);
 
   drawPixel(x, y) {
-    let value = 0;
+    let value = null;
     let screenPoint = new V3d(this.CAM_PLANE, x, y);
     let v = V3d.sub(screenPoint, this.CAM_POSITION).normalize();
 
@@ -95,29 +128,38 @@ class Visual {
           ),
         );
 
-        let valor =
+        value =
           V3d.dot(
             V3d.sub(contact_point, sphere.center),
             V3d.sub(this.LIGHT_POSITION, contact_point).normalize(),
           ) / sphere.radius;
-
-        value = Math.max(valor, value, 1 / this.CHARS.length);
+        break;
       }
     }
 
-    return this.CHARS[
-      Math.max(
-        Math.min(Math.floor(value * this.CHARS.length), this.CHARS.length - 1),
-        0,
-      )
-    ];
+    if (value === null) {
+      return this.BACKGROUND_CHAR;
+    }
+
+    return this.getPixelByBrightness(value);
+  }
+
+  getPixelByBrightness(brightness) {
+    if (brightness < 0) {
+      return this.CHARS[0];
+    }
+    let index = binarySearch(this.BRIGHTNESS, brightness);
+    let char = this.CHARS[index];
+    return char;
   }
 
   generateContent() {
     this.terminal.innerText = this.BASIC_CHAR.repeat(this.width * this.height);
 
-    let minLength =
-      1 / Math.min(this.terminal.clientWidth, this.terminal.clientHeight);
+    let minLength = Math.min(
+      this.terminal.clientWidth,
+      this.terminal.clientHeight,
+    );
 
     let y;
     let x;
@@ -129,8 +171,8 @@ class Visual {
         x = (2 * i) / (this.width - 1) - 1;
 
         content += this.drawPixel(
-          x * this.terminal.clientWidth * minLength,
-          y * this.terminal.clientHeight * minLength,
+          (x * this.terminal.clientWidth) / minLength,
+          (y * this.terminal.clientHeight) / minLength,
         );
       }
       content += "\n";
@@ -182,10 +224,10 @@ class Visual {
     let colorSum = 0;
 
     for (let i = 3; i < data.length; i += 4) {
-      colorSum -= data[i] > 255 / 2 ? 255 : 0;
+      colorSum += data[i];
     }
 
-    return colorSum / (canvas.width * canvas.height);
+    return colorSum / (255 * canvas.width * canvas.height);
   }
 }
 
