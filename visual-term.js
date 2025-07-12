@@ -13,12 +13,20 @@ class V3d {
     return new V3d(a.x - b.x, a.y - b.y, a.z - b.z);
   }
 
-  static scale(a, k) {
-    return new V3d(a.x * k, a.y * k, a.z * k);
-  }
-
   static dot(v, w) {
     return v.x * w.x + v.y * w.y + v.z * w.z;
+  }
+
+  static cross(v, w) {
+    return new V3d(
+      v.y * w.z - v.z * w.y,
+      v.z * w.x - v.x * w.z,
+      v.x * w.y - v.y * w.x,
+    );
+  }
+
+  scale(k) {
+    return new V3d(this.x * k, this.y * k, this.z * k);
   }
 
   norm() {
@@ -26,7 +34,7 @@ class V3d {
   }
 
   normalize() {
-    return V3d.scale(this, 1 / this.norm());
+    return this.scale(1 / this.norm());
   }
 
   toString() {
@@ -73,11 +81,12 @@ class Visual {
 
   start() {
     window.addEventListener("resize", this.onResize.bind(this));
+    this.terminal.addEventListener("wheel", this.onWheel.bind(this));
     this.terminal.addEventListener("mousemove", this.onMouseMove.bind(this));
 
     let brightness = {};
     for (let char of this.CHARS) {
-      brightness[char] = this.getBrightnessOfChar(char);
+      brightness[char] = this.#getBrightnessOfChar(char);
     }
 
     let minBrightness = Math.min(...Object.values(brightness));
@@ -94,52 +103,70 @@ class Visual {
       this.BRIGHTNESS.push(brightness[char]);
     }
 
+    for (let i = 0; i < 5; i++) {
+      this.SPHERES.push({
+        center: new V3d(
+          (2 * Math.random() - 1) * 6,
+          (2 * Math.random() - 1) * 6,
+          (2 * Math.random() - 1) * 6,
+        ),
+        radius: Math.random() * 1.5 + 0.5,
+      });
+    }
+
     this.onResize();
   }
 
-  SPHERES = [
-    { center: new V3d(0, 2, 0), radius: 1 },
-    { center: new V3d(0, -2, 0), radius: 1 },
-  ];
+  SPHERES = [];
 
-  CAM_POSITION = new V3d(5, 0, 0);
-  CAM_PLANE = 3;
+  CAM_POSITION = new V3d(15, 0, 0);
+  CAM_DIRECTION = new V3d(-1, 0, 0);
 
-  LIGHT_POSITION = new V3d(5, 1, 0);
+  LIGHT_POSITION = new V3d(0, 0, 0);
 
-  drawPixel(x, y) {
-    let value = null;
-    let screenPoint = new V3d(this.CAM_PLANE, x, y);
-    let v = V3d.sub(screenPoint, this.CAM_POSITION).normalize();
-
-    for (let i = 0; i < this.SPHERES.length; i++) {
-      let sphere = this.SPHERES[i];
+  drawPixel(direction) {
+    let result = this.SPHERES.map((sphere) => {
       let w = V3d.sub(sphere.center, this.CAM_POSITION);
 
-      let proj = V3d.scale(v, V3d.dot(v, w));
+      let proj = direction.scale(V3d.dot(direction, w));
       let norm = V3d.sub(proj, w).norm();
+      let contactPoint;
 
       if (norm <= sphere.radius) {
-        let contact_point = V3d.add(
+        contactPoint = V3d.add(
           this.CAM_POSITION,
           V3d.add(
             proj,
-            V3d.scale(v, -Math.sqrt(sphere.radius ** 2 - norm ** 2)),
+            direction.scale(-Math.sqrt(sphere.radius ** 2 - norm ** 2)),
           ),
         );
-
-        value =
-          V3d.dot(
-            V3d.sub(contact_point, sphere.center),
-            V3d.sub(this.LIGHT_POSITION, contact_point).normalize(),
-          ) / sphere.radius;
-        break;
+      } else {
+        contactPoint = null;
       }
-    }
 
-    if (value === null) {
+      return [contactPoint, sphere];
+    });
+
+    let [contactPoint, sphere] = result.reduce(
+      (accumulator, current) =>
+        accumulator[0] != null &&
+        (current[0] == null ||
+          V3d.sub(accumulator[0], this.CAM_POSITION).norm() <
+            V3d.sub(this.CAM_POSITION, current[0]).norm())
+          ? accumulator
+          : current,
+      [null, null],
+    );
+
+    if (contactPoint === null) {
       return this.BACKGROUND_CHAR;
     }
+
+    let value =
+      V3d.dot(
+        V3d.sub(contactPoint, sphere.center),
+        V3d.sub(this.LIGHT_POSITION, contactPoint).normalize(),
+      ) / sphere.radius;
 
     return this.getPixelByBrightness(value);
   }
@@ -158,24 +185,22 @@ class Visual {
       this.width * this.height,
     );
 
-    let minLength = Math.min(
-      this.terminal.clientWidth,
-      this.terminal.clientHeight,
-    );
+    let b1 = V3d.cross(this.CAM_DIRECTION, new V3d(0, 0, 1)).normalize();
+    let b2 = V3d.cross(this.CAM_DIRECTION, b1).normalize();
 
-    let y;
-    let x;
+    let x, y, direction;
 
     let content = "";
     for (let j = 0; j < this.height; j++) {
       y = (2 * j) / (this.height - 1) - 1;
       for (let i = 0; i < this.width; i++) {
         x = (2 * i) / (this.width - 1) - 1;
+        direction = V3d.add(
+          this.CAM_DIRECTION,
+          V3d.add(b1.scale(x), b2.scale(y)),
+        ).normalize();
 
-        content += this.drawPixel(
-          (x * this.terminal.clientWidth) / minLength,
-          (y * this.terminal.clientHeight) / minLength,
-        );
+        content += this.drawPixel(direction);
       }
       content += "\n";
     }
@@ -184,8 +209,7 @@ class Visual {
   }
 
   draw() {
-    this.content = this.generateContent();
-    this.terminal.innerText = this.content;
+    this.terminal.textContent = this.generateContent();
   }
 
   onResize() {
@@ -195,22 +219,33 @@ class Visual {
     this.draw();
   }
 
-  onMouseMove(event) {
-    let minLength = Math.min(
-      this.terminal.clientWidth,
-      this.terminal.clientHeight,
+  CAM_X_ROTATION = 0;
+  CAM_DISTANCE = 14;
+
+  onMouseMove(_event) {}
+  onWheel(event) {
+    if (event.shiftKey) {
+      this.CAM_DISTANCE += event.deltaY / 100;
+    } else {
+      this.CAM_X_ROTATION += event.deltaY / 1000;
+    }
+
+    this.#recalculateCamCords();
+  }
+
+  #recalculateCamCords() {
+    let rotationVector = new V3d(
+      Math.cos(this.CAM_X_ROTATION),
+      Math.sin(this.CAM_X_ROTATION),
+      0,
     );
 
-    this.LIGHT_POSITION = new V3d(
-      4,
-      (4 * (event.offsetX - this.terminal.clientWidth / 2)) / minLength,
-      (4 * (event.offsetY - this.terminal.clientHeight / 2)) / minLength,
-    );
-
+    this.CAM_POSITION = rotationVector.scale(-this.CAM_DISTANCE);
+    this.CAM_DIRECTION = rotationVector;
     this.draw();
   }
 
-  getBrightnessOfChar(char, size = 20) {
+  #getBrightnessOfChar(char, size = 20) {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
@@ -242,7 +277,7 @@ class HTMLVisualTermElement extends HTMLElement {
     this.terminal.classList.add("terminal");
     shadow.appendChild(this.terminal);
 
-    const style = this.generateStyle();
+    const style = this.#generateStyle();
     shadow.appendChild(style);
 
     this.visual = new Visual(this.terminal);
@@ -253,7 +288,7 @@ class HTMLVisualTermElement extends HTMLElement {
     return ["width", "height"];
   }
 
-  generateStyle() {
+  #generateStyle() {
     const styleElement = document.createElement("style");
 
     styleElement.innerText = `.terminal {
