@@ -1,48 +1,48 @@
 class V3d {
-  constructor(x, y, z) {
+  z: number;
+  x: number;
+  y: number;
+
+  constructor(x: number, y: number, z: number) {
     this.x = x;
     this.y = y;
     this.z = z;
   }
 
-  static add(a, b) {
-    return new V3d(a.x + b.x, a.y + b.y, a.z + b.z);
+  static add(v1: V3d, v2: V3d) {
+    return new V3d(v1.x + v2.x, v1.y + v2.y, v1.z + v2.z);
   }
 
-  static sub(a, b) {
-    return new V3d(a.x - b.x, a.y - b.y, a.z - b.z);
+  static sub(v1: V3d, v2: V3d) {
+    return new V3d(v1.x - v2.x, v1.y - v2.y, v1.z - v2.z);
   }
 
-  static dot(v, w) {
-    return v.x * w.x + v.y * w.y + v.z * w.z;
+  static dot(v1: V3d, v2: V3d) {
+    return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
   }
 
-  static cross(v, w) {
+  static cross(v1: V3d, v2: V3d) {
     return new V3d(
-      v.y * w.z - v.z * w.y,
-      v.z * w.x - v.x * w.z,
-      v.x * w.y - v.y * w.x,
+      v1.y * v2.z - v1.z * v2.y,
+      v1.z * v2.x - v1.x * v2.z,
+      v1.x * v2.y - v1.y * v2.x,
     );
   }
 
-  scale(k) {
-    return new V3d(this.x * k, this.y * k, this.z * k);
+  scale(value: number): V3d {
+    return new V3d(this.x * value, this.y * value, this.z * value);
   }
 
-  norm() {
+  norm(): number {
     return Math.sqrt(this.x ** 2 + this.y ** 2 + this.z ** 2);
   }
 
-  normalize() {
+  normalize(): V3d {
     return this.scale(1 / this.norm());
-  }
-
-  toString() {
-    return `(${this.x.toFixed(2)}, ${this.y.toFixed(2)}, ${this.z.toFixed(2)})`;
   }
 }
 
-function binarySearch(list, key) {
+function binarySearch(list: number[], key: number): number {
   let start = 0,
     end = list.length - 1;
 
@@ -61,22 +61,28 @@ function binarySearch(list, key) {
   return start;
 }
 
-class Visual {
-  BACKGROUND_CHAR = " ";
-  CHARS = Array.from({ length: 94 }).map((_, i) => String.fromCharCode(i + 33));
-  // ".,:ilwW".split("");
-  CHAR_HEIGHT = 25;
-  CHAR_WIDTH = 12;
+type Sphere = {
+  center: V3d;
+  radius: number;
+};
 
-  /**
-   *
-   * @param {HTMLDivElement} terminal
-   */
-  constructor(terminal) {
-    this.width = null;
-    this.height = null;
+class Visual {
+  BACKGROUND_CHAR: string = " ";
+  CHARS: string[] = Array.from({ length: 94 }).map((_, i) =>
+    String.fromCharCode(i + 33),
+  );
+
+  // ".,:ilwW".split("");
+  CHAR_HEIGHT: number = 25;
+  CHAR_WIDTH: number = 12;
+  BRIGHTNESS: number[] = [];
+
+  width: number | null = null;
+  height: number | null = null;
+  terminal: HTMLElement;
+
+  constructor(terminal: HTMLElement) {
     this.terminal = terminal;
-    this.content = terminal.innerText;
   }
 
   start() {
@@ -84,14 +90,19 @@ class Visual {
     this.terminal.addEventListener("wheel", this.onWheel.bind(this));
     this.terminal.addEventListener("mousemove", this.onMouseMove.bind(this));
 
-    let brightness = {};
+    let brightness: {
+      [char: string]: number;
+    } = {};
+    let minBrightness = Infinity;
+    let maxBrightness = -Infinity;
+
     for (let char of this.CHARS) {
       brightness[char] = this.#getBrightnessOfChar(char);
+      minBrightness = Math.min(minBrightness, brightness[char]);
+      maxBrightness = Math.max(maxBrightness, brightness[char]);
     }
 
-    let minBrightness = Math.min(...Object.values(brightness));
-    let rangeBrightness =
-      Math.max(...Object.values(brightness)) - minBrightness;
+    let rangeBrightness = maxBrightness - minBrightness;
 
     for (let char of this.CHARS) {
       brightness[char] = (brightness[char] - minBrightness) / rangeBrightness;
@@ -114,53 +125,57 @@ class Visual {
       });
     }
 
-    this.onResize();
+    this.width = this.height = null;
+    this.#calculateCamCords();
+    this.draw();
   }
 
-  SPHERES = [];
+  SPHERES: Sphere[] = [];
 
   CAM_POSITION = new V3d(15, 0, 0);
   CAM_DIRECTION = new V3d(-1, 0, 0);
 
   LIGHT_POSITION = new V3d(0, 0, 0);
 
-  drawPixel(direction) {
-    let result = this.SPHERES.map((sphere) => {
-      let w = V3d.sub(sphere.center, this.CAM_POSITION);
+  drawPixel(direction: V3d) {
+    let result = this.SPHERES.reduce(
+      (
+        accumulator: null | { contactPoint: V3d; sphere: Sphere },
+        sphere: Sphere,
+      ) => {
+        let w = V3d.sub(sphere.center, this.CAM_POSITION);
 
-      let proj = direction.scale(V3d.dot(direction, w));
-      let norm = V3d.sub(proj, w).norm();
-      let contactPoint;
+        let proj = direction.scale(V3d.dot(direction, w));
+        let norm = V3d.sub(proj, w).norm();
 
-      if (norm <= sphere.radius) {
-        contactPoint = V3d.add(
-          this.CAM_POSITION,
-          V3d.add(
-            proj,
-            direction.scale(-Math.sqrt(sphere.radius ** 2 - norm ** 2)),
-          ),
-        );
-      } else {
-        contactPoint = null;
-      }
+        if (norm <= sphere.radius) {
+          let contactPoint = V3d.add(
+            this.CAM_POSITION,
+            V3d.add(
+              proj,
+              direction.scale(-Math.sqrt(sphere.radius ** 2 - norm ** 2)),
+            ),
+          );
 
-      return [contactPoint, sphere];
-    });
+          if (
+            accumulator == null ||
+            V3d.sub(accumulator.contactPoint, this.CAM_POSITION).norm() >
+              V3d.sub(contactPoint, this.CAM_POSITION).norm()
+          ) {
+            return { contactPoint, sphere };
+          }
+        }
 
-    let [contactPoint, sphere] = result.reduce(
-      (accumulator, current) =>
-        accumulator[0] != null &&
-        (current[0] == null ||
-          V3d.sub(accumulator[0], this.CAM_POSITION).norm() <
-            V3d.sub(this.CAM_POSITION, current[0]).norm())
-          ? accumulator
-          : current,
-      [null, null],
+        return accumulator;
+      },
+      null,
     );
 
-    if (contactPoint === null) {
+    if (result === null) {
       return this.BACKGROUND_CHAR;
     }
+
+    let { contactPoint, sphere } = result;
 
     let value =
       V3d.dot(
@@ -171,7 +186,7 @@ class Visual {
     return this.getPixelByBrightness(value);
   }
 
-  getPixelByBrightness(brightness) {
+  getPixelByBrightness(brightness: number) {
     if (brightness < 0) {
       return this.CHARS[0];
     }
@@ -181,6 +196,11 @@ class Visual {
   }
 
   generateContent() {
+    if (this.width == null || this.height == null) {
+      this.width = Math.floor(this.terminal.clientWidth / this.CHAR_WIDTH);
+      this.height = Math.floor(this.terminal.clientHeight / this.CHAR_HEIGHT);
+    }
+
     this.terminal.innerText = this.BACKGROUND_CHAR.repeat(
       this.width * this.height,
     );
@@ -188,7 +208,7 @@ class Visual {
     let b1 = V3d.cross(this.CAM_DIRECTION, new V3d(0, 0, 1)).normalize();
     let b2 = V3d.cross(this.CAM_DIRECTION, b1).normalize();
 
-    let x, y, direction;
+    let x: number, y: number, direction: V3d;
 
     let content = "";
     for (let j = 0; j < this.height; j++) {
@@ -213,27 +233,26 @@ class Visual {
   }
 
   onResize() {
-    this.width = Math.floor(this.terminal.clientWidth / this.CHAR_WIDTH);
-    this.height = Math.floor(this.terminal.clientHeight / this.CHAR_HEIGHT);
-
+    this.width = this.height = null;
+    this.#calculateCamCords();
     this.draw();
   }
 
   CAM_X_ROTATION = 0;
   CAM_DISTANCE = 14;
 
-  onMouseMove(_event) {}
-  onWheel(event) {
+  onMouseMove(_event: MouseEvent) {}
+  onWheel(event: WheelEvent) {
     if (event.shiftKey) {
       this.CAM_DISTANCE += event.deltaY / 100;
     } else {
       this.CAM_X_ROTATION += event.deltaY / 1000;
     }
 
-    this.#recalculateCamCords();
+    this.#calculateCamCords();
   }
 
-  #recalculateCamCords() {
+  #calculateCamCords(): any {
     let rotationVector = new V3d(
       Math.cos(this.CAM_X_ROTATION),
       Math.sin(this.CAM_X_ROTATION),
@@ -245,9 +264,9 @@ class Visual {
     this.draw();
   }
 
-  #getBrightnessOfChar(char, size = 20) {
+  #getBrightnessOfChar(char: string, size: number = 20): number {
     const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 
     canvas.width = size;
     canvas.height = size;
@@ -273,15 +292,15 @@ class HTMLVisualTermElement extends HTMLElement {
     super();
     const shadow = this.attachShadow({ mode: "open" });
 
-    this.terminal = document.createElement("div");
-    this.terminal.classList.add("terminal");
-    shadow.appendChild(this.terminal);
+    let terminal = document.createElement("div");
+    terminal.classList.add("terminal");
+    shadow.appendChild(terminal);
 
     const style = this.#generateStyle();
     shadow.appendChild(style);
 
-    this.visual = new Visual(this.terminal);
-    window.addEventListener("load", () => this.visual.start());
+    let visual = new Visual(terminal);
+    window.addEventListener("load", () => visual.start());
   }
 
   static get observedAttributes() {
@@ -301,7 +320,7 @@ class HTMLVisualTermElement extends HTMLElement {
       white-space: pre-wrap;
       font-size: 20px;
       line-height: 25px;
-    }`.replaceAll("\n", " ");
+    }`;
 
     return styleElement;
   }
@@ -320,7 +339,11 @@ class HTMLVisualTermElement extends HTMLElement {
     }
   }
 
-  attributeChangedCallback(_name, _oldValue, _newValue) {
+  attributeChangedCallback(
+    _name: string,
+    _oldValue: string,
+    _newValue: string,
+  ) {
     let width = this.getAttribute("width");
     if (width != null) {
       this.style.width = width;
