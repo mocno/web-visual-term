@@ -68,11 +68,11 @@ type Sphere = {
 
 class Visual {
   BACKGROUND_CHAR: string = " ";
-  CHARS: string[] = Array.from({ length: 94 }).map((_, i) =>
-    String.fromCharCode(i + 33),
-  );
+  CHARS: string = Array.from({ length: 94 })
+    .map((_, i) => String.fromCharCode(i + 33))
+    .join();
 
-  // ".,:ilwW".split("");
+  // ".,:ilwW"
   CHAR_HEIGHT: number = 25;
   CHAR_WIDTH: number = 12;
   BRIGHTNESS: number[] = [];
@@ -97,7 +97,7 @@ class Visual {
     let maxBrightness = -Infinity;
 
     for (let char of this.CHARS) {
-      brightness[char] = this.#getBrightnessOfChar(char);
+      brightness[char] = this.getBrightnessOfChar(char);
       minBrightness = Math.min(minBrightness, brightness[char]);
       maxBrightness = Math.max(maxBrightness, brightness[char]);
     }
@@ -108,7 +108,9 @@ class Visual {
       brightness[char] = (brightness[char] - minBrightness) / rangeBrightness;
     }
 
-    this.CHARS = this.CHARS.sort((a, b) => brightness[a] - brightness[b]);
+    this.CHARS = this.CHARS.split("")
+      .sort((a, b) => brightness[a] - brightness[b])
+      .join("");
     this.BRIGHTNESS = [];
     for (let char of this.CHARS) {
       this.BRIGHTNESS.push(brightness[char]);
@@ -125,8 +127,7 @@ class Visual {
       });
     }
 
-    this.width = this.height = null;
-    this.#calculateCamCords();
+    this.calculateCamCords();
     this.draw();
   }
 
@@ -137,8 +138,8 @@ class Visual {
 
   LIGHT_POSITION = new V3d(0, 0, 0);
 
-  drawPixel(direction: V3d) {
-    let result = this.SPHERES.reduce(
+  raycasting(direction: V3d) {
+    return this.SPHERES.reduce(
       (
         accumulator: null | { contactPoint: V3d; sphere: Sphere },
         sphere: Sphere,
@@ -146,15 +147,12 @@ class Visual {
         let w = V3d.sub(sphere.center, this.CAM_POSITION);
 
         let proj = direction.scale(V3d.dot(direction, w));
-        let norm = V3d.sub(proj, w).norm();
+        let distance = V3d.sub(proj, w).norm();
 
-        if (norm <= sphere.radius) {
+        if (distance <= sphere.radius) {
           let contactPoint = V3d.add(
-            this.CAM_POSITION,
-            V3d.add(
-              proj,
-              direction.scale(-Math.sqrt(sphere.radius ** 2 - norm ** 2)),
-            ),
+            direction.scale(-Math.sqrt(sphere.radius ** 2 - distance ** 2)),
+            V3d.add(proj, this.CAM_POSITION),
           );
 
           if (
@@ -170,6 +168,10 @@ class Visual {
       },
       null,
     );
+  }
+
+  private drawPixel(direction: V3d) {
+    let result = this.raycasting(direction);
 
     if (result === null) {
       return this.BACKGROUND_CHAR;
@@ -178,15 +180,15 @@ class Visual {
     let { contactPoint, sphere } = result;
 
     let value =
-      V3d.dot(
-        V3d.sub(contactPoint, sphere.center),
+      -V3d.dot(
+        V3d.sub(sphere.center, contactPoint),
         V3d.sub(this.LIGHT_POSITION, contactPoint).normalize(),
       ) / sphere.radius;
 
     return this.getPixelByBrightness(value);
   }
 
-  getPixelByBrightness(brightness: number) {
+  private getPixelByBrightness(brightness: number) {
     if (brightness < 0) {
       return this.CHARS[0];
     }
@@ -195,7 +197,7 @@ class Visual {
     return char;
   }
 
-  generateContent() {
+  private generateContent() {
     if (this.width == null || this.height == null) {
       this.width = Math.floor(this.terminal.clientWidth / this.CHAR_WIDTH);
       this.height = Math.floor(this.terminal.clientHeight / this.CHAR_HEIGHT);
@@ -205,6 +207,11 @@ class Visual {
       this.width * this.height,
     );
 
+    let minLength = Math.min(
+      this.terminal.clientWidth,
+      this.terminal.clientHeight,
+    );
+
     let b1 = V3d.cross(this.CAM_DIRECTION, new V3d(0, 0, 1)).normalize();
     let b2 = V3d.cross(this.CAM_DIRECTION, b1).normalize();
 
@@ -212,9 +219,13 @@ class Visual {
 
     let content = "";
     for (let j = 0; j < this.height; j++) {
-      y = (2 * j) / (this.height - 1) - 1;
+      y =
+        (((2 * j) / (this.height - 1) - 1) * this.terminal.clientHeight) /
+        minLength;
       for (let i = 0; i < this.width; i++) {
-        x = (2 * i) / (this.width - 1) - 1;
+        x =
+          (((2 * i) / (this.width - 1) - 1) * this.terminal.clientWidth) /
+          minLength;
         direction = V3d.add(
           this.CAM_DIRECTION,
           V3d.add(b1.scale(x), b2.scale(y)),
@@ -234,7 +245,7 @@ class Visual {
 
   onResize() {
     this.width = this.height = null;
-    this.#calculateCamCords();
+    this.calculateCamCords();
     this.draw();
   }
 
@@ -249,10 +260,10 @@ class Visual {
       this.CAM_X_ROTATION += event.deltaY / 1000;
     }
 
-    this.#calculateCamCords();
+    this.calculateCamCords();
   }
 
-  #calculateCamCords(): any {
+  private calculateCamCords(): any {
     let rotationVector = new V3d(
       Math.cos(this.CAM_X_ROTATION),
       Math.sin(this.CAM_X_ROTATION),
@@ -264,7 +275,7 @@ class Visual {
     this.draw();
   }
 
-  #getBrightnessOfChar(char: string, size: number = 20): number {
+  private getBrightnessOfChar(char: string, size: number = 20): number {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 
@@ -296,7 +307,7 @@ class HTMLVisualTermElement extends HTMLElement {
     terminal.classList.add("terminal");
     shadow.appendChild(terminal);
 
-    const style = this.#generateStyle();
+    const style = this.generateStyle();
     shadow.appendChild(style);
 
     let visual = new Visual(terminal);
@@ -307,7 +318,7 @@ class HTMLVisualTermElement extends HTMLElement {
     return ["width", "height"];
   }
 
-  #generateStyle() {
+  private generateStyle() {
     const styleElement = document.createElement("style");
 
     styleElement.innerText = `.terminal {
